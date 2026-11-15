@@ -92,7 +92,17 @@
 const $ = s => document.querySelector(s);
 const fmt = t => new Date(t).toLocaleString('ru-RU');
 
-async function api(path, opts) {
+// если страница открыта как http://user:pass@host, браузер не кладёт эти
+// креды в auth-кэш для fetch-подзапросов — прикладываем Authorization сами
+const urlAuth = location.username
+  ? 'Basic ' + btoa(decodeURIComponent(location.username) + ':' + decodeURIComponent(location.password))
+  : null;
+if (urlAuth) history.replaceState(null, '', location.pathname); // убрать пароль из адресной строки
+
+async function api(path, opts = {}) {
+  if (urlAuth) {
+    opts.headers = Object.assign({}, opts.headers, {Authorization: urlAuth});
+  }
   const r = await fetch(path, opts);
   if (!r.ok && r.status !== 404) throw new Error(`${r.status} ${await r.text()}`);
   return r;
