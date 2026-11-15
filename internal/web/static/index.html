@@ -164,7 +164,10 @@ async function loadHealth() {
       .map(([k, v]) => `<div>${k}: <span class="${v.ok ? 'ok' : 'bad'}">${v.ok ? 'ok' : 'FAIL ' + v.error}</span></div>`)
       .join('');
   } catch (e) {
-    $('#health').innerHTML = '<span class="bad">API недоступен</span>';
+    const msg = String(e.message).startsWith('401')
+      ? 'нужен вход: подтвердите диалог авторизации браузера'
+      : 'API недоступен';
+    $('#health').innerHTML = `<span class="bad">${msg}</span>`;
   }
 }
 
