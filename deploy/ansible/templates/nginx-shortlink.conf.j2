@@ -1,5 +1,11 @@
-# shortlink: единственная точка входа nginx + basic auth.
-# Приложение (frontend) слушает на 127.0.0.1:8080 и наружу не опубликовано.
+# shortlink: nginx — единственная точка входа.
+# Basic auth защищает только API (данные); страница UI и редиректы /r/ открыты.
+#
+# Почему так: схема http://user:pass@host/ в Chrome не работает для SPA —
+# браузер применяет креды только к навигации и вычищает их из location,
+# поэтому fetch-подзапросы авторизовать нечем. Стандартный поток: страница
+# грузится без авторизации, первый запрос к API получает 401, браузер
+# показывает нативный диалог входа и кэширует креды для всех запросов.
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -7,29 +13,42 @@ server {
 
     server_tokens off;
 
-    auth_basic "shortlink";
-    auth_basic_user_file /etc/nginx/.htpasswd.shortlink;
-
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy no-referrer-when-downgrade always;
 
-    # Короткие ссылки работают без авторизации (создание/статистика — под паролем)
-    location /r/ {
-        auth_basic off;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+
+    # API и админ-поверхность — под basic auth
+    location /api/ {
+        auth_basic "shortlink";
+        auth_basic_user_file /etc/nginx/.htpasswd.shortlink;
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    location = /healthz {
+        auth_basic "shortlink";
+        auth_basic_user_file /etc/nginx/.htpasswd.shortlink;
+        proxy_pass http://127.0.0.1:8080;
+    }
+
+    location = /hello {
+        auth_basic "shortlink";
+        auth_basic_user_file /etc/nginx/.htpasswd.shortlink;
+        proxy_pass http://127.0.0.1:8080;
+    }
+
+    # короткие ссылки — публичные 302
+    location /r/ {
+        proxy_pass http://127.0.0.1:8080;
+    }
+
+    # страница UI — статика без данных, открыта
     location / {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_http_version 1.1;
     }
 }
