@@ -1,0 +1,5 @@
+bin/
+backups/*.sql
+.env
+*.pptx
+*.docx
