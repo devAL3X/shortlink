@@ -4,3 +4,4 @@ backups/*.sql
 *.pptx
 *.docx
 .zcode/
+deploy/ansible/group_vars/secrets.yml
