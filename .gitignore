@@ -3,3 +3,4 @@ backups/*.sql
 .env
 *.pptx
 *.docx
+.zcode/
