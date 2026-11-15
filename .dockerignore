@@ -1,0 +1,10 @@
+.git
+.gitignore
+.dockerignore
+Makefile
+backups
+demo
+deploy
+docs
+*.md
+*.pptx
