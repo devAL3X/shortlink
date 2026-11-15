@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ShortLink — безопасный сокращатель ссылок</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b27; --border: #2a3040;
+    --text: #e6e9f0; --muted: #8b93a7; --accent: #4f8cff; --ok: #3fb27f;
+    --warn: #e0a83c; --err: #e05c5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  header { padding: 28px 32px 8px; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: .3px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin-top: 6px; }
+  main { max-width: 900px; margin: 0 auto; padding: 16px 32px 64px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-top: 18px;
+  }
+  .row { display: flex; gap: 10px; }
+  input[type=url] {
+    flex: 1; background: #0d1117; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 11px 14px;
+    font-size: 15px; outline: none;
+  }
+  input[type=url]:focus { border-color: var(--accent); }
+  button {
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 11px 22px; font-size: 15px; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  button.danger { background: transparent; border: 1px solid var(--err); color: var(--err); padding: 4px 10px; font-size: 13px; }
+  #result { margin-top: 14px; display: none; }
+  #result .short { font-size: 18px; color: var(--ok); word-break: break-all; }
+  #result a { color: var(--ok); }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 1px solid #1d2331; vertical-align: top; }
+  td.url { word-break: break-all; max-width: 380px; }
+  .code { font-family: ui-monospace, monospace; color: var(--accent); }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 99px; font-size: 12px; }
+  .pill.hit  { background: #12351f; color: var(--ok); }
+  .pill.miss { background: #3a2d12; color: var(--warn); }
+  .muted { color: var(--muted); }
+  .health { font-family: ui-monospace, monospace; font-size: 13px; }
+  .health .ok  { color: var(--ok); }
+  .health .bad { color: var(--err); }
+  .cachebox { margin-top: 12px; font-family: ui-monospace, monospace; font-size: 13px; color: var(--muted); }
+  h2 { font-size: 17px; margin: 0 0 4px; }
+  label { display:block; color: var(--muted); font-size: 13px; margin-bottom: 6px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Short<span>link</span></h1>
+  <div class="sub">микросервисный сокращатель ссылок · PostgreSQL · Redis · RabbitMQ</div>
+</header>
+<main>
+  <section class="card">
+    <label for="url">Длинный URL — сократим и посчитаем переходы</label>
+    <div class="row">
+      <input id="url" type="url" placeholder="https://example.com/very/long/url" autofocus>
+      <button id="create">Сократить</button>
+    </div>
+    <div id="result"></div>
+    <div class="cachebox" id="redirectinfo">Проверка редиректа: нажмите на короткую ссылку — здесь появятся код ответа и заголовок X-Cache.</div>
+  </section>
+
+  <section class="card">
+    <h2>Ссылки и статистика</h2>
+    <div class="sub" style="margin-bottom:8px">Клики считаются асинхронно: API публикует событие в RabbitMQ, worker пишет в PostgreSQL.</div>
+    <table>
+      <thead><tr><th>Код</th><th>Целевой URL</th><th>Клики</th><th>Создана</th><th></th></tr></thead>
+      <tbody id="links"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Здоровье компонентов</h2>
+    <div class="health" id="health">…</div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const fmt = t => new Date(t).toLocaleString('ru-RU');
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok && r.status !== 404) throw new Error(`${r.status} ${await r.text()}`);
+  return r;
+}
+
+$('#create').onclick = async () => {
+  const url = $('#url').value.trim();
+  const r = await api('/api/links', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({url}),
+  });
+  if (!r.ok) { $('#result').style.display = 'block'; $('#result').innerHTML = '<span class="muted">Ошибка: проверьте URL (нужен абсолютный http/https)</span>'; return; }
+  const l = await r.json();
+  const short = `${location.origin}/r/${l.code}`;
+  $('#result').style.display = 'block';
+  $('#result').innerHTML = `Готово: <a href="${short}" target="_blank" class="short">${short}</a>`;
+  $('#url').value = '';
+  loadLinks();
+};
+
+async function loadLinks() {
+  const r = await api('/api/links');
+  const links = await r.json();
+  $('#links').innerHTML = (links || []).map(l => `
+    <tr>
+      <td><a class="code" href="/r/${l.code}" target="_blank">${l.code}</a></td>
+      <td class="url">${l.url}</td>
+      <td>${l.clicks}</td>
+      <td class="muted">${fmt(l.created_at)}</td>
+      <td><button class="danger" onclick="del('${l.code}')">удалить</button></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="muted">пока пусто</td></tr>';
+}
+
+window.del = async code => {
+  await api('/api/links/' + code, {method: 'DELETE'});
+  loadLinks();
+};
+
+// показывает код ответа и X-Cache (HIT из Redis / MISS — читаем из PostgreSQL)
+document.addEventListener('click', async e => {
+  const a = e.target.closest('a[href^="/r/"]');
+  if (!a) return;
+  e.preventDefault();
+  const r = await fetch(a.href, {redirect: 'manual'});
+  const cache = r.headers.get('X-Cache') || '—';
+  const loc = r.headers.get('Location') || '—';
+  $('#redirectinfo').innerHTML =
+    `GET ${a.pathname} → <b>${r.status}</b> · X-Cache: <span class="pill ${cache.toLowerCase()}">${cache}</span> · Location: ${loc}`;
+  loadLinks();
+  setTimeout(loadLinks, 1200); // worker успевает посчитать клик
+});
+
+async function loadHealth() {
+  try {
+    const r = await api('/healthz');
+    const j = await r.json();
+    $('#health').innerHTML = Object.entries(j.status)
+      .map(([k, v]) => `<div>${k}: <span class="${v.ok ? 'ok' : 'bad'}">${v.ok ? 'ok' : 'FAIL ' + v.error}</span></div>`)
+      .join('');
+  } catch (e) {
+    $('#health').innerHTML = '<span class="bad">API недоступен</span>';
+  }
+}
+
+loadLinks();
+loadHealth();
+setInterval(loadLinks, 4000);
+setInterval(loadHealth, 5000);
+</script>
+</body>
+</html>
