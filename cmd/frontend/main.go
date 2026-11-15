@@ -37,12 +37,20 @@ func main() {
 		_, _ = w.Write([]byte("api unavailable\n"))
 	}
 
+	// UI — один встроенный файл: запрещаем браузеру кэшировать,
+	// иначе после деплоя обновления не видны без жёсткого обновления
+	fileServer := http.FileServerFS(web.Static())
+	ui := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		fileServer.ServeHTTP(w, r)
+	})
+
 	mux := http.NewServeMux()
 	mux.Handle("/api/", proxy)
 	mux.Handle("/r/", proxy)
 	mux.Handle("GET /healthz", proxy)
 	mux.Handle("GET /hello", proxy)
-	mux.Handle("/", http.FileServerFS(web.Static()))
+	mux.Handle("/", ui)
 
 	srv := &http.Server{
 		Addr:              config.Env("LISTEN", ":8080"),
