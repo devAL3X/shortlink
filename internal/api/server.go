@@ -35,6 +35,7 @@ func New(svc *links.Service, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /api/links", s.list)            // SELECT
 	mux.HandleFunc("PATCH /api/links/{code}", s.update) // UPDATE
 	mux.HandleFunc("DELETE /api/links/{code}", s.delete) // DELETE + инвалидация кэша
+	mux.HandleFunc("GET /api/links/{code}/resolve", s.resolveInfo) // данные редиректа без 302 (для UI)
 	mux.HandleFunc("GET /r/{code}", s.redirect)         // редирект с кэшем и событием клика
 
 	return s.middleware(mux)
@@ -165,6 +166,27 @@ func (s *Server) redirect(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Cache", "MISS")
 	}
 	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// resolveInfo — тот же путь разрешения кода (кэш -> БД), но JSON без 302.
+// Используется UI: браузерный fetch не даёт прочитать заголовки непроследованного редиректа.
+func (s *Server) resolveInfo(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+	target, fromCache, err := s.svc.Resolve(r.Context(), code)
+	if errors.Is(err, links.ErrNotFound) {
+		httpError(w, http.StatusNotFound, "link not found")
+		return
+	}
+	if err != nil {
+		s.log.ErrorContext(r.Context(), "resolve link", "code", code, "err", err)
+		httpError(w, http.StatusInternalServerError, "resolve error")
+		return
+	}
+	cache := "MISS"
+	if fromCache {
+		cache = "HIT"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"code": code, "target": target, "cache": cache})
 }
 
 func validURL(raw string) bool {

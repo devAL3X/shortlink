@@ -132,16 +132,16 @@ window.del = async code => {
   loadLinks();
 };
 
-// показывает код ответа и X-Cache (HIT из Redis / MISS — читаем из PostgreSQL)
+// показывает, откуда взят URL: HIT — из Redis, MISS — из PostgreSQL (через /resolve)
 document.addEventListener('click', async e => {
   const a = e.target.closest('a[href^="/r/"]');
   if (!a) return;
   e.preventDefault();
-  const r = await fetch(a.href, {redirect: 'manual'});
-  const cache = r.headers.get('X-Cache') || '—';
-  const loc = r.headers.get('Location') || '—';
+  const code = a.pathname.split('/').pop();
+  const r = await api('/api/links/' + code + '/resolve');
+  const j = await r.json();
   $('#redirectinfo').innerHTML =
-    `GET ${a.pathname} → <b>${r.status}</b> · X-Cache: <span class="pill ${cache.toLowerCase()}">${cache}</span> · Location: ${loc}`;
+    `GET /r/${j.code} → 302 Found · источник: <span class="pill ${j.cache.toLowerCase()}">${j.cache === 'HIT' ? 'HIT (Redis)' : 'MISS (PostgreSQL)'}</span> · Location: ${j.target}`;
   loadLinks();
   setTimeout(loadLinks, 1200); // worker успевает посчитать клик
 });
