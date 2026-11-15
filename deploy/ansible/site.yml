@@ -9,10 +9,11 @@
     - group_vars/secrets.yml   # gitignored; ansible грузит из group_vars только all и файлы групп
 
   handlers:
+    # service reload молча оставляет старый конфиг при ошибке (SIGHUP),
+    # поэтому валидируем явно и падаем громко
     - name: Reload nginx
-      ansible.builtin.service:
-        name: nginx
-        state: reloaded
+      ansible.builtin.shell: nginx -t && systemctl reload nginx
+      changed_when: true
 
     - name: Reload sshd
       ansible.builtin.service:
@@ -164,19 +165,42 @@
         port: 8080
         timeout: 300
 
-    - name: Страница UI открыта без пароля — 200
+    - name: Без входа — 401, без cookie-токена
       ansible.builtin.uri:
         url: http://127.0.0.1/
-        status_code: 200
-
-    - name: API без пароля — 401
-      ansible.builtin.uri:
-        url: http://127.0.0.1/api/links
         status_code: 401
+      register: noauth
 
-    - name: API с паролем — 200
+    - name: Вход по basic — 200 и cookie с токеном
       ansible.builtin.uri:
-        url: http://127.0.0.1/api/links
+        url: http://127.0.0.1/
         url_username: "{{ basic_auth_user }}"
         url_password: "{{ basic_auth_password }}"
         status_code: 200
+      register: login
+
+    - name: Токен выдан
+      ansible.builtin.assert:
+        that:
+          - login.cookies.slauth is defined
+          - login.cookies.slauth == auth_cookie_token
+        fail_msg: "cookie slauth не выдана или не совпадает с токеном"
+
+    - name: API по токену без basic — 200
+      ansible.builtin.uri:
+        url: http://127.0.0.1/api/links
+        headers:
+          Cookie: "slauth={{ auth_cookie_token }}"
+        status_code: 200
+
+    - name: Короткая ссылка без токена — не 401 (публична)
+      ansible.builtin.uri:
+        url: http://127.0.0.1/r/ping
+        status_code: 404
+      register: pub
+
+    - name: По короткой ссылке токен НЕ выдаётся
+      ansible.builtin.assert:
+        that:
+          - pub.cookies.slauth is not defined
+        fail_msg: "cookie выдаётся на публичном /r/ — дыра!"
