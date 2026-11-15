@@ -103,7 +103,9 @@ async function api(path, opts = {}) {
   if (urlAuth) {
     opts.headers = Object.assign({}, opts.headers, {Authorization: urlAuth});
   }
-  const r = await fetch(path, opts);
+  // абсолютный URL от origin: на страницах, открытых как http://user:pass@host/,
+  // относительный fetch запрещён спекой (URL includes credentials) и падает с TypeError
+  const r = await fetch(new URL(path, location.origin), opts);
   if (!r.ok && r.status !== 404) throw new Error(`${r.status} ${await r.text()}`);
   return r;
 }
