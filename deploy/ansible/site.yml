@@ -164,14 +164,19 @@
         port: 8080
         timeout: 300
 
-    - name: Без пароля — 401
+    - name: Страница UI открыта без пароля — 200
       ansible.builtin.uri:
         url: http://127.0.0.1/
+        status_code: 200
+
+    - name: API без пароля — 401
+      ansible.builtin.uri:
+        url: http://127.0.0.1/api/links
         status_code: 401
 
-    - name: С паролем — 200
+    - name: API с паролем — 200
       ansible.builtin.uri:
-        url: http://127.0.0.1/
+        url: http://127.0.0.1/api/links
         url_username: "{{ basic_auth_user }}"
         url_password: "{{ basic_auth_password }}"
         status_code: 200
