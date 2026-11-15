@@ -1,0 +1,9 @@
+---
+# Публичная конфигурация деплоя (без секретов).
+# Пароль и хэш basic auth — в group_vars/secrets.yml (gitignored).
+
+shortlink_repo: https://github.com/devAL3X/shortlink.git
+shortlink_version: main
+shortlink_dir: /opt/shortlink
+
+basic_auth_user: shortlink
